@@ -1,0 +1,27 @@
+package main
+
+import (
+	"flag"
+	"log"
+
+	"{{.Import}}"
+)
+
+var (
+    {{range .Params -}}
+	flag{{.Name}} = flag.{{ title .Type.Kind.String }}("{{.Name}}", {{ zero .Type }}, "")
+    {{end -}}
+)
+
+func main() {
+	t := {{ .Package }}.{{ .Name }}{
+		Params: {{ .Package }}.{{ .ParamsName }}{
+			{{range .Params -}}
+			{{.Name}}: *flag{{.Name}},
+			{{end -}}
+		},
+	}
+	if err := t.Run(); err != nil {
+		log.Fatal(err)
+	}
+}
