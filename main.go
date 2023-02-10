@@ -28,7 +28,6 @@ import (
 
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"github.com/wlynch/tko/example"
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
@@ -103,11 +102,9 @@ func generateYAML(in interface{}) (v1beta1.Task, error) {
 			})
 		}
 		step := v1beta1.Step{
-			Container: v1.Container{
-				Name:  strings.ToLower(t.Name()),
-				Image: fmt.Sprintf("ko://%s/tko-%s", t.PkgPath(), strings.ToLower(t.Name())),
-				Args:  args,
-			},
+			Name:  strings.ToLower(t.Name()),
+			Image: fmt.Sprintf("ko://%s/tko-%s", t.PkgPath(), strings.ToLower(t.Name())),
+			Args:  args,
 		}
 		out.Spec.Steps = []v1beta1.Step{step}
 

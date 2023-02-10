@@ -12,12 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package example
+package main
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+
+	"github.com/wlynch/tko/pkg/tko"
+)
 
 type MyTask struct {
-	Params MyTaskParams
+	Params  MyTaskParams
+	Results MyTaskResults
 }
 
 type MyTaskParams struct {
@@ -25,7 +31,23 @@ type MyTaskParams struct {
 	B int
 }
 
-func (t MyTask) Run() error {
+type MyTaskResults struct {
+	C string
+	D int
+}
+
+func (t MyTask) Run(ctx context.Context) error {
 	fmt.Println("hello", t.Params.A, t.Params.B)
 	return nil
+}
+
+func main() {
+	//t := new(MyTask2)
+	//t.Execute(context.Background())
+	t := &MyTask{
+		Params: MyTaskParams{
+			A: "qwer",
+		},
+	}
+	tko.Execute(context.Background(), t)
 }
