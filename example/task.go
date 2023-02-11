@@ -21,8 +21,10 @@ import (
 	"github.com/wlynch/tko/pkg/tko"
 )
 
+// MyTask asdf
+// tko:Task
 type MyTask struct {
-	Params  MyTaskParams
+	Params  MyTaskParams `tko:"asdf"`
 	Results MyTaskResults
 }
 
@@ -42,12 +44,6 @@ func (t MyTask) Run(ctx context.Context) error {
 }
 
 func main() {
-	//t := new(MyTask2)
-	//t.Execute(context.Background())
-	t := &MyTask{
-		Params: MyTaskParams{
-			A: "qwer",
-		},
-	}
+	t := &MyTask{}
 	tko.Execute(context.Background(), t)
 }

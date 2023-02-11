@@ -1,0 +1,13 @@
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  generateName: hello-
+spec:
+  params:
+    - name: A
+      value: "foo"
+    - name: B
+      value: "1"
+  taskRef:
+    name: "MyTask"
+    bundle: ttl.sh/tko-example/mytask:latest

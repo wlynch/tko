@@ -16,135 +16,121 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
-	"log"
+	"go/types"
 	"os"
-	"path"
-	"path/filepath"
-	"reflect"
+	"os/exec"
 	"strings"
-	"text/template"
 
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-	"github.com/wlynch/tko/example"
+	"golang.org/x/tools/go/packages"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
 
-var (
-	tmpl = template.Must(template.New("main.go.tmpl").Funcs(template.FuncMap{
-		"title": strings.Title,
-		"zero": func(t reflect.Type) string {
-			out := fmt.Sprint(reflect.Zero(t))
-			if out == "" {
-				return `""`
-			}
-			return out
-		},
-	}).ParseFiles("main.go.tmpl"))
-)
-
 func main() {
-	in := example.MyTask{}
-	t := reflect.TypeOf(in)
-	base := filepath.FromSlash(fmt.Sprintf("%s/tko-%s", path.Base(t.PkgPath()), strings.ToLower(t.Name())))
-	if err := os.MkdirAll(base, 0755); err != nil {
-		log.Fatal(err)
+	pkgs, err := packages.Load(&packages.Config{
+		Mode: packages.NeedTypes | packages.NeedTypesInfo,
+	}, os.Args[1])
+	if err != nil {
+		panic(err)
 	}
-
-	out, _ := generateYAML(in)
-	b, _ := yaml.Marshal(out)
-	fmt.Println(string(b))
-	if err := os.WriteFile(filepath.Join(base, "task.yaml"), b, 0644); err != nil {
-		log.Fatal(err)
-	}
-
-	outGo, err := generateGo(in)
-	fmt.Println(string(outGo), err)
-	if err := os.WriteFile(filepath.Join(base, "main.go"), outGo, 0644); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func generateYAML(in interface{}) (v1beta1.Task, error) {
-	out := v1beta1.Task{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "tekton.dev/v1beta1",
-			Kind:       "Task",
-		},
-	}
-
-	t := reflect.TypeOf(in)
-	out.Name = strings.ToLower(t.Name())
-
-	sf, ok := t.FieldByName("Params")
-	if ok {
-		pt := sf.Type
-		paramSpecs := make([]v1beta1.ParamSpec, 0, pt.NumField())
-		args := make([]string, 0, pt.NumField()*2)
-
-		for i := 0; i < pt.NumField(); i++ {
-			psf := pt.Field(i)
-
-			pType := v1beta1.ParamTypeString
-			if psf.Type.Kind() == reflect.Slice {
-				pType = v1beta1.ParamTypeArray
-				args = append(args, fmt.Sprintf("--%s", psf.Name), fmt.Sprintf("$(params.%s[*])", psf.Name))
-			} else {
-				args = append(args, fmt.Sprintf("--%s", psf.Name), fmt.Sprintf("$(params.%s)", psf.Name))
-
+	for _, p := range pkgs {
+		scope := p.Types.Scope()
+		for _, n := range scope.Names() {
+			if !strings.HasSuffix(n, "Task") {
+				continue
 			}
+			obj := scope.Lookup(n)
+			switch s := obj.Type().Underlying().(type) {
+			case *types.Struct:
+				out := &v1beta1.Task{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: v1beta1.SchemeGroupVersion.String(),
+						Kind:       "Task",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name: n,
+					},
+					Spec: v1beta1.TaskSpec{
+						Steps: []v1beta1.Step{{
+							Image: fmt.Sprintf("ko://%s", p.ID),
+						}},
+					},
+				}
+				for i := 0; i < s.NumFields(); i++ {
+					f := s.Field(i)
+					switch f.Name() {
+					case "Params":
+						sub := f.Type().Underlying().(*types.Struct)
+						params := []v1beta1.ParamSpec{}
+						args := make([]string, 0, sub.NumFields()*2)
+						for j := 0; j < sub.NumFields(); j++ {
+							f := sub.Field(j)
+							switch sub.Field(j).Type().(type) {
+							case *types.Basic:
+								params = append(params, v1beta1.ParamSpec{
+									Name: f.Name(),
+									Type: v1beta1.ParamTypeString,
+								})
+								args = append(args, fmt.Sprintf("-%s", f.Name()), fmt.Sprintf("$(params.%s)", f.Name()))
+							}
+						}
+						out.Spec.Params = params
+						out.Spec.Steps[0].Args = args
+					case "Results":
+						sub := f.Type().Underlying().(*types.Struct)
+						results := []v1beta1.TaskResult{}
+						for j := 0; j < sub.NumFields(); j++ {
+							f := sub.Field(j)
+							switch sub.Field(j).Type().(type) {
+							case *types.Basic:
+								results = append(results, v1beta1.TaskResult{
+									Name: f.Name(),
+									Type: v1beta1.ResultsTypeString,
+								})
+							}
+						}
+						out.Spec.Results = results
+					}
+				}
 
-			paramSpecs = append(paramSpecs, v1beta1.ParamSpec{
-				Name: psf.Name,
-				Type: pType,
-			})
+				b, err := yaml.Marshal(out)
+				if err != nil {
+					panic(err)
+				}
+				/*
+					fmt.Println("Task spec:")
+					fmt.Println(string(b))
+				*/
+
+				ko := exec.Command("ko", append([]string{"resolve", "-f", "-"}, os.Args[2:]...)...)
+				ko.Stdin = bytes.NewBuffer(b)
+				ko.Stderr = os.Stderr
+				ko.Wait()
+				koout, err := ko.Output()
+				if err != nil {
+					panic(err)
+				}
+				/*
+					fmt.Println("Resolved Task spec:")
+					fmt.Println(string(koout))
+				*/
+
+				koDockerRepo, ok := os.LookupEnv("KO_DOCKER_REPO")
+				if !ok {
+					panic("KO_DOCKER_REPO not set")
+				}
+
+				bundle := fmt.Sprintf("%s/%s:latest", koDockerRepo, strings.ToLower(n))
+				tkn := exec.Command("tkn", "bundle", "push", "-f", "-", bundle)
+				tkn.Stdin = bytes.NewBuffer(koout)
+				tkn.Stdout = os.Stdout
+				tkn.Stderr = os.Stderr
+				if err := tkn.Run(); err != nil {
+					panic(err)
+				}
+			}
 		}
-		step := v1beta1.Step{
-			Name:  strings.ToLower(t.Name()),
-			Image: fmt.Sprintf("ko://%s/tko-%s", t.PkgPath(), strings.ToLower(t.Name())),
-			Args:  args,
-		}
-		out.Spec.Steps = []v1beta1.Step{step}
-
-		out.Spec.Params = paramSpecs
-
 	}
-	return out, nil
-}
-
-type tmplValues struct {
-	Import  string
-	Package string
-	Name    string
-
-	ParamsName string
-	Params     []reflect.StructField
-}
-
-func generateGo(in interface{}) ([]byte, error) {
-	tv := new(tmplValues)
-
-	t := reflect.TypeOf(in)
-	tv.Import = t.PkgPath()
-	tv.Package = path.Base(t.PkgPath())
-	tv.Name = t.Name()
-	sf, ok := t.FieldByName("Params")
-	if !ok {
-		return nil, errors.New("no Params field")
-	}
-
-	pt := sf.Type
-	tv.ParamsName = sf.Type.Name()
-	for i := 0; i < pt.NumField(); i++ {
-		tv.Params = append(tv.Params, pt.Field(i))
-	}
-
-	b := new(bytes.Buffer)
-	if err := tmpl.Execute(b, tv); err != nil {
-		return nil, err
-	}
-
-	return b.Bytes(), nil
 }
