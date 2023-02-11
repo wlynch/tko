@@ -38,8 +38,12 @@ type MyTaskResults struct {
 	D int
 }
 
-func (t MyTask) Run(ctx context.Context) error {
+func (t *MyTask) Run(ctx context.Context) error {
 	fmt.Println("hello", t.Params.A, t.Params.B)
+	t.Results = MyTaskResults{
+		C: "tacocat",
+		D: 8675309,
+	}
 	return nil
 }
 

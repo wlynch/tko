@@ -14,12 +14,32 @@ published, etc.
 ## Usage
 
 ```sh
-$ tko <package> [<ko flags>]
+$ tko <package> [<ko flags> | <tko flags>]
 ```
 
 See https://ko.build/reference/ko_resolve/ for details on `<ko flags>`
 
-## Generate the Task
+### Writing Tasks
+
+tko expects Tasks to follow a particular format. All Tasks should be Go structs with names ending in `Task`.
+
+Each Task can declare `Params` and `Results` fields to represent Task I/O (name must match, but the struct type can be whatever you choose)
+
+Tasks should be a runnable Go program and implement the `tko.Runner` interface. In most cases you can use a simple `main` wrapper:
+
+```go
+func main() {
+	tko.Execute(context.Background(), new(MyTask))
+}
+```
+
+`tko.Execute` will automatically:
+- Generate command line flags matching variables defined in `Params`.
+- Write Result output for data (Tasks are responsible for populating the `Results` field).
+
+### Example
+
+The [example](./example) directory contains a functioning tko Task.
 
 ```sh
 $ export KO_DOCKER_REPO="ttl.sh/tko-example"
@@ -31,7 +51,7 @@ Creating Tekton Bundle:
 Pushed Tekton Bundle to ttl.sh/tko-example/mytask@sha256:042026b6d4ab01f4eb4d403ebfe17f00f25b69753d9132feff35bf7de54ae88b
 ```
 
-## Use the Task
+#### Use the Task
 
 ```
 $ cat run.yaml
@@ -54,7 +74,7 @@ $ tkn tr logs hello-8cbnm
 [unnamed-0] hello foo 1
 ```
 
-## Get the SBOM
+#### Get the SBOM
 
 Because the Task is built with ko, an SBOM is automatically generated at build
 time.
