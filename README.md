@@ -11,6 +11,14 @@ to handle the rest.
 tko generates a ko-compatible Task + main.go, which can then be applied,
 published, etc.
 
+## Usage
+
+```sh
+$ tko <package> [<ko flags>]
+```
+
+See https://ko.build/reference/ko_resolve/ for details on `<ko flags>`
+
 ## Generate the Task
 
 ```sh
