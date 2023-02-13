@@ -119,6 +119,7 @@ func main() {
 
 				koDockerRepo, ok := os.LookupEnv("KO_DOCKER_REPO")
 				if !ok {
+					// The previous command wouldn't have passed if this wasn't set, so this should never happen.
 					panic("KO_DOCKER_REPO not set")
 				}
 

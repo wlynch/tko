@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/wlynch/tko/pkg/tko"
@@ -29,8 +30,18 @@ type MyTask struct {
 }
 
 type MyTaskParams struct {
-	A string
+	A string `tko:"asdf" json:"qwer"`
 	B int
+	/*
+		C *int
+		D *string
+		E int32
+		F int8
+		G bool
+		I []string
+		J []int
+		K []uint8
+	*/
 }
 
 type MyTaskResults struct {
@@ -40,6 +51,8 @@ type MyTaskResults struct {
 
 func (t *MyTask) Run(ctx context.Context) error {
 	fmt.Println("hello", t.Params.A, t.Params.B)
+	b, _ := json.Marshal(t.Params)
+	fmt.Println(string(b))
 	t.Results = MyTaskResults{
 		C: "tacocat",
 		D: 8675309,
